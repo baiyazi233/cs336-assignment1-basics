@@ -1,5 +1,6 @@
-import re
+import regex as re
 from collections import Counter
+import collections
 
 def BPE_Tokenizer_Training(
     input_path: str,
@@ -21,17 +22,21 @@ def BPE_Tokenizer_Training(
   tokens = [match.group() for match in matches]
   # 统计词频
   word_counts = dict(Counter(tokens))
-  # 将单词转换为字节数组
-  byte_word_counts = {word.encode("utf-8"): count for word, count in word_counts.items()}
+  word_counts = { ' '.join(word): count for word, count in word_counts.items() }
   # 合并记录
   merges = []
-
   # 选择并合并字节对
   while len(vocab) < vocab_size:
     # 统计字节对频率
-    byte_pair_freq = get_pair_statistics(byte_word_counts)
+    pair_freq = get_pair_statistics(word_counts)
+    # 如果没有可合并的字节对，退出循环
+    if not pair_freq:
+      print("No more pairs to merge. Exiting the loop.")
+      break
+    print(pair_freq)
     # 选择频率最高的字节对
-    best_pair = max(byte_pair_freq, key=byte_pair_freq.get)
+    best_pair = max(pair_freq, key=pair_freq.get)
+    print(best_pair)
     # 合并字节对
     new_token = best_pair[0] + best_pair[1]
     # 更新词汇表
@@ -40,26 +45,60 @@ def BPE_Tokenizer_Training(
     merges.append(best_pair)
 
     # 更新 byte_word_counts 以反映合并后的词汇表
-    new_byte_word_counts = Counter()
-    for byte_word, count in byte_word_counts.items():
+    new_word_counts = Counter()
+    for word, count in word_counts.items():
         # 使用 bytes.replace 方法替换字节对
-        new_byte_word = byte_word.replace(best_pair[0] + best_pair[1], new_token)
-        new_byte_word_counts[new_byte_word] += count
-    byte_word_counts = new_byte_word_counts
+        new_word = word.replace(best_pair[0] + " " + best_pair[1], new_token)
+        new_word_counts[new_word] += count
+        print(f"Replacing {best_pair[0] + best_pair[1]} with {new_token} in {word} -> {new_word}")
+    word_counts = new_word_counts
+    print(word_counts)
 
   return vocab,merges
 
 
 
 def get_pair_statistics(
-    byte_word_counts: dict[bytes, int]
+    word_counts: dict[str, int],
 ) -> dict[tuple[bytes, bytes], int]:
-  byte_pair_freq = Counter()
+  pairs_freq = collections.defaultdict(int)
+  for word, freq in word_counts.items():
+      symbols = word.split()
+      for i in range(len(symbols)-1):
+          pairs_freq[symbols[i],symbols[i+1]] += freq
+  return pairs_freq
 
-  for byte_word, count in byte_word_counts.items():
-    # 提取字节对
-    for i in range(len(byte_word) - 1):
-        byte_pair = (byte_word[i:i+1], byte_word[i+1:i+2])
-        byte_pair_freq[byte_pair] += count
-  
-  return dict(byte_pair_freq)
+
+if __name__ == "__main__":
+      # 测试数据
+    input_path = "../data/TinyStoriesV2-GPT4-train.txt"
+    vocab_size = 10000
+    special_tokens = ["<|endoftext|>"]
+
+    # 调用函数
+    vocab, merges = BPE_Tokenizer_Training(input_path, vocab_size, special_tokens)
+
+    # 输出结果
+    print("Vocabulary:")
+    for k, v in vocab.items():
+        print(f"{k}: {v}")
+
+    print("\nMerges:")
+    for merge in merges:
+        print(merge)
+    #  # 测试数据
+    # input_path = "test_input.txt"
+    # vocab_size = 300
+    # special_tokens = ["<s>", "</s>"]
+
+    # # 调用函数
+    # vocab, merges = BPE_Tokenizer_Training(input_path, vocab_size, special_tokens)
+
+    # # 输出结果
+    # print("Vocabulary:" + str(len(vocab)))
+    # for k, v in vocab.items():
+    #     print(f"{k}: {v}")
+
+    # print("\nMerges:")
+    # for merge in merges:
+    #     print(merge)
